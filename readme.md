@@ -1,125 +1,181 @@
 # FastAPI URL Pinger
 
-A web service that pings URLs at specified intervals to keep them active. Perfect for keeping Render.com or other free hosting services from going to sleep.
+A FastAPI service that pings URLs at regular intervals. This project wraps the original URL pinger script into a modern web API.
 
 ## Features
 
-- Web interface for easy management
-- REST API endpoints
-- Background URL pinging
-- Real-time status monitoring
-- Multiple URL support
-- Configurable ping intervals
+- 🌐 **Web API**: Easy-to-use REST API endpoints
+- 📊 **Multiple URLs**: Ping multiple URLs simultaneously
+- ⏰ **Configurable Intervals**: Set custom ping intervals
+- 📱 **Real-time Status**: Monitor active ping tasks
+- 🔧 **Task Management**: Start, stop, and manage ping tasks
+- 📚 **Auto Documentation**: Built-in Swagger UI documentation
 
 ## Quick Start
 
-### Local Development
+### Option 1: Using the Local Runner (Recommended)
 
-1. Install dependencies:
-```bash
-pip install -r requirements.txt
+1. **Download all files** to a directory
+2. **Run the setup script**:
+   ```bash
+   python run_local.py
+   ```
+
+This will automatically install dependencies and start the server.
+
+### Option 2: Manual Setup
+
+1. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Run the server**:
+   ```bash
+   python main.py
+   ```
+
+### Option 3: Using Poetry (If you have Poetry installed)
+
+1. **Install dependencies**:
+   ```bash
+   poetry install
+   ```
+
+2. **Run the server**:
+   ```bash
+   poetry run python main.py
+   ```
+
+### Option 4: Using Docker
+
+1. **Build the Docker image**:
+   ```bash
+   docker build -t fastapi-pinger .
+   ```
+
+2. **Run the container**:
+   ```bash
+   docker run -p 8000:8000 fastapi-pinger
+   ```
+
+## Usage
+
+Once the server is running, you can access:
+
+- **API Server**: http://localhost:8000
+- **Interactive API Docs**: http://localhost:8000/docs
+- **Alternative API Docs**: http://localhost:8000/redoc
+
+### API Endpoints
+
+#### 1. Start Pinging URLs
+```http
+POST /ping
 ```
 
-2. Run the application:
-```bash
-python main.py
+**Request Body:**
+```json
+{
+  "urls": [
+    "https://quikeyfy.onrender.com/",
+    "https://chotu-ly.onrender.com/",
+    "https://upi-payment-gateway-demo.onrender.com/"
+  ],
+  "interval": 60
+}
 ```
 
-3. Visit `http://localhost:8000` in your browser
-
-### PythonAnywhere Deployment
-
-1. Upload all files to your PythonAnywhere account
-2. Install requirements in the PythonAnywhere console:
-```bash
-pip3.10 install --user -r requirements.txt
+**Response:**
+```json
+{
+  "message": "Started pinging 3 URLs every 60 seconds",
+  "task_id": "task_1",
+  "urls": ["https://quikeyfy.onrender.com/", "..."],
+  "interval": 60
+}
 ```
 
-3. Configure the Web App:
-   - Go to the "Web" tab in your PythonAnywhere dashboard
-   - Click "Add a new web app"
-   - Choose "Manual configuration" and Python 3.10
-   - Set the source code directory to `/home/yourusername/mysite`
-   - Set the working directory to `/home/yourusername/mysite`
-   - Edit the WSGI file to point to your `wsgi.py`
+#### 2. Get Status of All Tasks
+```http
+GET /status
+```
 
-4. Update `wsgi.py`:
-   - Change `yourusername` to your actual PythonAnywhere username
-   - Make sure the path points to your project directory
+**Response:**
+```json
+{
+  "active_tasks": 1,
+  "tasks": [
+    {
+      "task_id": "task_1",
+      "urls": ["https://quikeyfy.onrender.com/"],
+      "interval": 60,
+      "active": true,
+      "started_at": "2024-01-15 10:30:00",
+      "last_results": [...]
+    }
+  ]
+}
+```
 
-5. Reload your web app
+#### 3. Stop a Specific Task
+```http
+DELETE /stop/{task_id}
+```
 
-## API Endpoints
+#### 4. Stop All Tasks
+```http
+DELETE /stop-all
+```
 
-### Web Interface
-- `GET /` - HTML interface for managing pings
+#### 5. Ping Once
+```http
+GET /ping-once?url=https://example.com
+```
 
-### REST API
-- `POST /start-ping` - Start pinging URLs
-- `POST /stop-ping` - Stop all ping jobs
-- `GET /status` - Get current status of all URLs
-- `GET /health` - Health check
+## Example Usage with curl
 
-## Usage Examples
-
-### Start Pinging (API)
 ```bash
-curl -X POST "http://your-domain.com/start-ping" \
+# Start pinging URLs
+curl -X POST "http://localhost:8000/ping" \
   -H "Content-Type: application/json" \
   -d '{
-    "urls": ["https://example1.com", "https://example2.com"],
-    "interval": 60
+    "urls": ["https://quikeyfy.onrender.com/", "https://chotu-ly.onrender.com/"],
+    "interval": 30
   }'
+
+# Check status
+curl http://localhost:8000/status
+
+# Stop all tasks
+curl -X DELETE http://localhost:8000/stop-all
 ```
-
-### Get Status
-```bash
-curl "http://your-domain.com/status"
-```
-
-### Stop Pinging
-```bash
-curl -X POST "http://your-domain.com/stop-ping"
-```
-
-## Default URLs to Ping
-
-Based on your original script, here are the URLs you were pinging:
-- https://quikeyfy.onrender.com/
-- https://chotu-ly.onrender.com/
-- https://upi-payment-gateway-demo.onrender.com/
-- https://authsystems.onrender.com/
 
 ## Configuration
 
-- **Ping Interval**: Minimum 10 seconds (configurable via API or web interface)
-- **Request Timeout**: 10 seconds per request
-- **Concurrent Pinging**: All URLs are pinged in sequence
+The server runs on `0.0.0.0:8000` by default. You can modify the host and port in the `main.py` file:
 
-## Logging
+```python
+uvicorn.run(app, host="0.0.0.0", port=8000)
+```
 
-The application logs all ping attempts and their results. Check the PythonAnywhere error log for detailed information.
+## Project Structure
 
-## Error Handling
+```
+fastapi-url-pinger/
+├── main.py              # Main FastAPI application
+├── requirements.txt     # Python dependencies
+├── pyproject.toml      # Poetry configuration
+├── Dockerfile          # Docker configuration
+├── run_local.py        # Local setup script
+└── README.md           # This file
+```
 
-- Network errors are caught and logged
-- Failed requests are retried on the next interval
-- Status codes outside 200-299 range are considered failures
+## Original Script
 
-## Security Notes
+This project is based on the original URL pinger script by [jashgro](https://bit.ly/jashgro).
+Updates and more info: https://github.com/BlackHatDevX/Render-Pinger
 
-- No authentication is implemented - consider adding it for production use
-- URLs are validated using Pydantic's HttpUrl validator
-- Request timeouts prevent hanging requests
+## License
 
-## Troubleshooting
-
-1. **Import errors**: Make sure all requirements are installed
-2. **WSGI errors**: Check that the path in `wsgi.py` is correct
-3. **Ping failures**: Check the status endpoint for error details
-4. **Memory issues**: Consider reducing ping frequency for many URLs
-
-## Credits
-
-Original script by jashgro (https://bit.ly/jashgro)
-Updates on https://github.com/BlackHatDevX/Render-Pinger
+This project maintains the same spirit as the original script - free to use and modify.
