@@ -1,32 +1,13 @@
-from fastapi import FastAPI, BackgroundTasks, HTTPException
-from pydantic import BaseModel, HttpUrl
-from typing import List, Dict, Any
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 import requests
 import time
-import asyncio
-from datetime import datetime
 import threading
+from datetime import datetime
+from typing import List, Dict, Any
+import json
 
-app = FastAPI(
-    title="URL Pinger Service",
-    description="A FastAPI service to ping URLs at regular intervals",
-    version="1.0.0"
-)
-
-# Pydantic models for request/response
-class PingRequest(BaseModel):
-    urls: List[HttpUrl]
-    interval: int = 60  # Default to 60 seconds
-
-class PingResponse(BaseModel):
-    message: str
-    task_id: str
-    urls: List[str]
-    interval: int
-
-class StatusResponse(BaseModel):
-    active_tasks: int
-    tasks: List[Dict[str, Any]]
+app = Flask(__name__)
+app.secret_key = 'your-secret-key-here'  # Change this to a secure secret key
 
 # Global storage for active tasks
 active_tasks = {}
@@ -96,36 +77,40 @@ def ping_urls_continuously(task_id: str, urls: List[str], interval: int):
     if task_id in active_tasks:
         del active_tasks[task_id]
 
-@app.get("/")
-async def root():
-    """Root endpoint with service information"""
-    return {
-        "message": "URL Pinger Service",
-        "description": "A FastAPI service to ping URLs at regular intervals",
-        "author": "Based on script by jashgro (https://bit.ly/jashgro)",
-        "endpoints": {
-            "POST /ping": "Start pinging URLs",
-            "GET /status": "Get status of all active tasks",
-            "DELETE /stop/{task_id}": "Stop a specific ping task",
-            "DELETE /stop-all": "Stop all active tasks"
-        }
-    }
+@app.route('/')
+def index():
+    """Main dashboard page"""
+    return render_template('index.html', active_tasks=active_tasks)
 
-@app.post("/ping", response_model=PingResponse)
-async def start_ping(request: PingRequest):
-    """Start pinging the provided URLs at specified intervals"""
+@app.route('/ping', methods=['POST'])
+def start_ping():
+    """Start pinging URLs"""
     global task_counter
+    
+    urls_input = request.form.get('urls', '')
+    interval = int(request.form.get('interval', 60))
+    
+    # Parse URLs from textarea (one per line)
+    urls = [url.strip() for url in urls_input.split('\n') if url.strip()]
+    
+    if not urls:
+        flash('Please enter at least one URL', 'error')
+        return redirect(url_for('index'))
+    
+    # Validate URLs
+    valid_urls = []
+    for url in urls:
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+        valid_urls.append(url)
     
     task_counter += 1
     task_id = f"task_{task_counter}"
     
-    # Convert HttpUrl objects to strings
-    urls_str = [str(url) for url in request.urls]
-    
     # Store task information
     active_tasks[task_id] = {
-        "urls": urls_str,
-        "interval": request.interval,
+        "urls": valid_urls,
+        "interval": interval,
         "active": True,
         "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "last_results": []
@@ -134,21 +119,40 @@ async def start_ping(request: PingRequest):
     # Start the pinging task in a separate thread
     thread = threading.Thread(
         target=ping_urls_continuously,
-        args=(task_id, urls_str, request.interval)
+        args=(task_id, valid_urls, interval)
     )
     thread.daemon = True
     thread.start()
     
-    return PingResponse(
-        message=f"Started pinging {len(urls_str)} URLs every {request.interval} seconds",
-        task_id=task_id,
-        urls=urls_str,
-        interval=request.interval
-    )
+    flash(f'Started pinging {len(valid_urls)} URLs every {interval} seconds', 'success')
+    return redirect(url_for('index'))
 
-@app.get("/status", response_model=StatusResponse)
-async def get_status():
-    """Get the status of all active ping tasks"""
+@app.route('/stop/<task_id>')
+def stop_task(task_id: str):
+    """Stop a specific ping task"""
+    if task_id not in active_tasks:
+        flash('Task not found', 'error')
+    else:
+        active_tasks[task_id]["active"] = False
+        flash(f'Task {task_id} stopped successfully', 'success')
+    
+    return redirect(url_for('index'))
+
+@app.route('/stop-all')
+def stop_all_tasks():
+    """Stop all active ping tasks"""
+    stopped_count = 0
+    
+    for task_id in list(active_tasks.keys()):
+        active_tasks[task_id]["active"] = False
+        stopped_count += 1
+    
+    flash(f'Stopped {stopped_count} active tasks', 'success')
+    return redirect(url_for('index'))
+
+@app.route('/status')
+def get_status():
+    """Get status as JSON (API endpoint)"""
     tasks_info = []
     
     for task_id, task_info in active_tasks.items():
@@ -161,42 +165,25 @@ async def get_status():
             "last_results": task_info["last_results"][-3:]  # Show last 3 results
         })
     
-    return StatusResponse(
-        active_tasks=len(active_tasks),
-        tasks=tasks_info
-    )
+    return jsonify({
+        "active_tasks": len(active_tasks),
+        "tasks": tasks_info
+    })
 
-@app.delete("/stop/{task_id}")
-async def stop_task(task_id: str):
-    """Stop a specific ping task"""
-    if task_id not in active_tasks:
-        raise HTTPException(status_code=404, detail="Task not found")
-    
-    active_tasks[task_id]["active"] = False
-    
-    return {"message": f"Task {task_id} stopped successfully"}
-
-@app.delete("/stop-all")
-async def stop_all_tasks():
-    """Stop all active ping tasks"""
-    stopped_count = 0
-    
-    for task_id in list(active_tasks.keys()):
-        active_tasks[task_id]["active"] = False
-        stopped_count += 1
-    
-    return {"message": f"Stopped {stopped_count} active tasks"}
-
-@app.get("/ping-once")
-async def ping_once(url: HttpUrl):
+@app.route('/ping-once')
+def ping_once():
     """Ping a single URL once and return the result"""
-    result = send_request(str(url))
-    return result
+    url = request.args.get('url')
+    if not url:
+        return jsonify({"error": "URL parameter is required"}), 400
+    
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+    
+    result = send_request(url)
+    return jsonify(result)
 
 if __name__ == "__main__":
-    import uvicorn
-    print("Script made by jashgro (https://bit.ly/jashgro)")
-    print("Updates on https://github.com/BlackHatDevX/Render-Pinger")
-    print("FastAPI Version - Starting server...")
-    
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print("Script based on jashgro's work (https://bit.ly/jashgro)")
+    print("Flask Web Interface Version - Starting server...")
+    app.run(debug=True, host="0.0.0.0", port=8000)
