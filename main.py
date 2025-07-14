@@ -13,25 +13,60 @@ active_tasks = {}
 task_counter = 0
 
 def ping_url(url: str) -> Dict[str, Any]:
-    """Simple URL ping function"""
+    """Simple URL ping function with better error handling"""
     try:
-        # Simple GET request with basic timeout
-        response = requests.get(url, timeout=10)
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        return {
-            "url": url,
-            "status": "success" if response.status_code == 200 else "failed",
-            "status_code": response.status_code,
-            "timestamp": timestamp
+        # More robust request with headers and shorter timeout
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         
+        response = requests.get(
+            url, 
+            timeout=5,  # Shorter timeout
+            headers=headers,
+            allow_redirects=True,
+            verify=False  # Skip SSL verification for problematic sites
+        )
+        
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        if response.status_code == 200:
+            return {
+                "url": url,
+                "status": "success",
+                "status_code": response.status_code,
+                "timestamp": timestamp,
+                "message": "OK"
+            }
+        else:
+            return {
+                "url": url,
+                "status": "warning",
+                "status_code": response.status_code,
+                "timestamp": timestamp,
+                "message": f"HTTP {response.status_code}"
+            }
+        
+    except requests.exceptions.Timeout:
+        return {
+            "url": url,
+            "status": "timeout",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "message": "Request timed out"
+        }
+    except requests.exceptions.ConnectionError:
+        return {
+            "url": url,
+            "status": "connection_error",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "message": "Connection failed (proxy/network issue)"
+        }
     except Exception as e:
         return {
             "url": url,
             "status": "error",
-            "error": str(e)[:100],  # Truncate long errors
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "message": str(e)[:50] + "..." if len(str(e)) > 50 else str(e)
         }
 
 def ping_task(task_id: str, urls: List[str], interval: int):
@@ -50,7 +85,7 @@ def ping_task(task_id: str, urls: List[str], interval: int):
             if len(task_info["results"]) > 5:
                 task_info["results"].pop(0)
             
-            print(f"Pinged {url}: {result['status']}")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] {url} -> {result['status']}: {result['message']}")
         
         # Simple sleep
         time.sleep(interval)

@@ -110,11 +110,14 @@
             border-radius: 4px;
             border-left: 3px solid #28a745;
         }
-        .result-failed {
+        .result-failed, .result-warning {
             border-left-color: #dc3545;
         }
-        .result-error {
+        .result-error, .result-connection_error {
             border-left-color: #ffc107;
+        }
+        .result-timeout {
+            border-left-color: #fd7e14;
         }
         .no-tasks {
             text-align: center;
@@ -190,7 +193,7 @@
                                         <strong>${result.url}</strong><br>
                                         ${result.timestamp} - ${result.status.toUpperCase()}
                                         ${result.status_code ? ` (${result.status_code})` : ''}
-                                        ${result.error ? ` - ${result.error}` : ''}
+                                        ${result.message ? ` - ${result.message}` : ''}
                                     </div>
                                 `).join('')}
                             </div>
